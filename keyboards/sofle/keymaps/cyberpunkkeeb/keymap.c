@@ -1,6 +1,14 @@
 // Copyright 2023 QMK
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include QMK_KEYBOARD_H
+#include "timer.h"
+#include "cyberpunk_logo.h"
+#include "rgblight.h"
+
+#define ANIMATION_FRAME_DURATION 100
+#define ANIMATION_PAUSE_DURATION 10000
+
+#define SEQUENCE_LENGTH 10
 
 enum sofle_layers {
     /* _M_XYZ = Mac Os, _W_XYZ = Win/Linux */
@@ -211,4 +219,84 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             break;
     }
     return true;
+}
+
+
+void render_layer_state(void) {
+    oled_set_cursor(32, 0);
+    oled_write_P(PSTR(">>V<<\n\n"), false);
+
+    oled_write_P(PSTR("Layer\n"), false);
+    switch (biton32(layer_state)) {
+        case 0:
+            oled_write_P(PSTR("QWERT\n"), false);
+            break;
+        case 3:
+            oled_write_P(PSTR("LOWER\n"), false);
+            break;
+        case 2:
+            oled_write_P(PSTR("RAISE\n"), false);
+            break;
+        default:
+            oled_write_P(PSTR("NaN "), false);
+            break;
+    }
+}
+
+
+const uint8_t frame_sequence[SEQUENCE_LENGTH] = {
+    0, 1, 2, 3, 2, 1, 0,  // Animação: 0,1,2,3,2,1,0
+    0, 1, 0               // Pausas e frame especial: 0 (5s), 5 (5s), 0
+};
+
+
+const uint16_t frame_durations[SEQUENCE_LENGTH] = {100, 100, 100,  100, 100,
+                                                   100, 100, 5000, 100, 5000};
+
+uint32_t last_step_timer = 0;
+uint8_t current_step = 0;
+
+static void render_cyberpunk_logo(void) {
+    if (last_step_timer == 0) {
+        last_step_timer = timer_read32();
+    }
+
+    if (timer_elapsed32(last_step_timer) > frame_durations[current_step]) {
+        current_step++;
+        if (current_step >= SEQUENCE_LENGTH) {
+            current_step = 0;
+        }
+        last_step_timer = timer_read32();
+    }
+
+    oled_clear();
+    oled_write_raw_P(cyberpunk_glitch[frame_sequence[current_step]],
+                     sizeof(cyberpunk_glitch[0]));
+}
+
+static void render_relic(void) {
+    static const char PROGMEM relic[] = {
+        0x00, 0x00, 0xf8, 0xfc, 0xfe, 0xfe, 0x1e, 0x9e, 0xde, 0xde, 0xde, 0xde,
+        0xde, 0xde, 0xde, 0xde, 0xde, 0xde, 0xde, 0xde, 0xde, 0xde, 0xde, 0xde,
+        0x9e, 0x1e, 0xfe, 0xfe, 0xfc, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x1f, 0x3f,
+        0x3f, 0x3f, 0x3c, 0x3c, 0x3d, 0x3d, 0x3d, 0x3d, 0x3d, 0x3d, 0xbd, 0xfd,
+        0xfd, 0xf9, 0xf1, 0x01, 0x01, 0x83, 0xff, 0xff, 0xff, 0x00, 0xff, 0xff,
+        0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xfc, 0xfe, 0xfe, 0xfc, 0x00, 0x00,
+        0x00, 0x00, 0xf8, 0xfc, 0xfe, 0xff, 0x8f, 0x07, 0x73, 0xf9, 0xfc, 0xfe,
+        0x9f, 0x0f, 0x07, 0x03, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00,
+        0x00, 0x00, 0x1f, 0x3f, 0x7f, 0x7f, 0x78, 0x78, 0x78, 0x78, 0x78, 0x79,
+        0x7b, 0x7f, 0x7f, 0x7f, 0x7c, 0x38, 0x01, 0x03, 0x0f, 0x1f, 0x3e, 0x7c,
+        0x78, 0x78, 0x7f, 0x7f, 0x3f, 0x1f, 0x00, 0x00};
+
+    oled_write_raw_P(relic, sizeof(relic));
+}
+
+bool oled_task_user(void) {
+    if (is_keyboard_master()) {
+        render_relic();
+        render_layer_state();
+    } else {
+        render_cyberpunk_logo();
+    }
+    return false;
 }
